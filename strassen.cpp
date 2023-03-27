@@ -4,10 +4,18 @@
 #include <pthread.h>
 #include <iostream>
 #include <fstream>
+#include <memory>
 
 using namespace Eigen;
 
-MatrixXi regMult(const MatrixXi &A, const MatrixXi &B,int n) {
+struct ThreadArgs {
+    MatrixXi A;
+    MatrixXi B;
+    MatrixXi *result;
+    int n;
+};
+
+MatrixXi regMult(const MatrixXi &A, const MatrixXi &B, int n) {
     // Perform matrix multiplication using Eigen's .row(), .col() and .dot() methods
     MatrixXi C(n, n);
     C.setZero();
@@ -21,6 +29,15 @@ MatrixXi regMult(const MatrixXi &A, const MatrixXi &B,int n) {
     return C;
 }
 
+MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n);
+
+void *threadedStrassMult(void *args) {
+    ThreadArgs *arguments = (ThreadArgs *)args;
+    int n = arguments->n;
+    *(arguments->result) = strassMult(arguments->A, arguments->B, n);
+    return NULL;
+}
+
 MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
     if (n <= 64) { // Base case: use standard matrix multiplication for small matrices
         return regMult(A, B, n);
@@ -28,30 +45,64 @@ MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
 
     int half = n / 2;
 
-    MatrixXi A11 = A.topLeftCorner(half, half);
-    MatrixXi A12 = A.topRightCorner(half, half);
-    MatrixXi A21 = A.bottomLeftCorner(half, half);
-    MatrixXi A22 = A.bottomRightCorner(half, half);
+    // Allocate submatrices on the heap
+    auto A11 = std::make_unique<MatrixXi>(A.topLeftCorner(half, half));
+    auto A12 = std::make_unique<MatrixXi>(A.topRightCorner(half, half));
+    auto A21 = std::make_unique<MatrixXi>(A.bottomLeftCorner(half, half));
+    auto A22 = std::make_unique<MatrixXi>(A.bottomRightCorner(half, half));
 
-    MatrixXi B11 = B.topLeftCorner(half, half);
-    MatrixXi B12 = B.topRightCorner(half, half);
-    MatrixXi B21 = B.bottomLeftCorner(half, half);
-    MatrixXi B22 = B.bottomRightCorner(half, half);
+    auto B11 = std::make_unique<MatrixXi>(B.topLeftCorner(half, half));
+    auto B12 = std::make_unique<MatrixXi>(B.topRightCorner(half, half));
+    auto B21 = std::make_unique<MatrixXi>(B.bottomLeftCorner(half, half));
+    auto B22 = std::make_unique<MatrixXi>(B.bottomRightCorner(half, half));
 
-    MatrixXi P1 = strassMult(A11 + A22, B11 + B22, half);
-    MatrixXi P2 = strassMult(A21 + A22, B11, half);
-    MatrixXi P3 = strassMult(A11, B12 - B22, half);
-    MatrixXi P4 = strassMult(A22, B21 - B11, half);
-    MatrixXi P5 = strassMult(A11 + A12, B22, half);
-    MatrixXi P6 = strassMult(A21 - A11, B11 + B12, half);
-    MatrixXi P7 = strassMult(A12 - A22, B21 + B22, half);
+    // Allocate result matrices on the heap
+    auto P1 = std::make_unique<MatrixXi>(half, half);
+    auto P2 = std::make_unique<MatrixXi>(half, half);
+    auto P3 = std::make_unique<MatrixXi>(half, half);
+    auto P4 = std::make_unique<MatrixXi>(half, half);
+    auto P5 = std::make_unique<MatrixXi>(half, half);
+    auto P6 = std::make_unique<MatrixXi>(half, half);
+    auto P7 = std::make_unique<MatrixXi>(half, half);
 
-    MatrixXi C11 = P1 + P4 - P5 + P7;
-    MatrixXi C12 = P3 + P5;
-    MatrixXi C21 = P2 + P4;
-    MatrixXi C22 = P1 - P2 + P3 + P6;
+    pthread_t threads[7];
+    ThreadArgs threadArgs[7];
 
-    MatrixXi C(n,n);
+    for (int i = 0; i < 7; ++i) {
+        threadArgs[i].n = half;
+    }
+
+    threadArgs[0] = {(*A11.get()) + (*A22.get()), (*B11.get()) + (*B22.get()), P1.get(), half};
+    pthread_create(&threads[0], NULL, threadedStrassMult, (void *)&threadArgs[0]);
+
+    threadArgs[1] = {(*A21.get()) + (*A22.get()), *B11.get(), P2.get(), half};
+    pthread_create(&threads[1], NULL, threadedStrassMult, (void *)&threadArgs[1]);
+
+    threadArgs[2] = {*A11.get(), (*B12.get()) - (*B22.get()), P3.get(), half};
+    pthread_create(&threads[2], NULL, threadedStrassMult, (void *)&threadArgs[2]);
+
+    threadArgs[3] = {*A22.get(), (*B21.get()) - (*B11.get()), P4.get(), half};
+    pthread_create(&threads[3], NULL, threadedStrassMult, (void *)&threadArgs[3]);
+
+    threadArgs[4] = {(*A11.get()) + (*A12.get()), *B22.get(), P5.get(), half};
+    pthread_create(&threads[4], NULL, threadedStrassMult, (void *)&threadArgs[4]);
+
+    threadArgs[5] = {(*A21.get()) - (*A11.get()), (*B11.get()) + (*B12.get()), P6.get(), half};
+    pthread_create(&threads[5], NULL, threadedStrassMult, (void *)&threadArgs[5]);
+
+    threadArgs[6] = {(*A12.get()) - (*A22.get()), (*B21.get()) + (*B22.get()), P7.get(), half};
+    pthread_create(&threads[6], NULL, threadedStrassMult, (void *)&threadArgs[6]);
+
+    for (int i = 0; i < 7; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    MatrixXi C11 = *P1 + *P4 - *P5 + *P7;
+    MatrixXi C12 = *P3 + *P5;
+    MatrixXi C21 = *P2 + *P4;
+    MatrixXi C22 = *P1 - *P2 + *P3 + *P6;
+
+    MatrixXi C(n, n);
 
     C << C11, C12,
          C21, C22;
@@ -96,10 +147,6 @@ int main(int argc, char *argv[]) {
 
     inputFile.close();
 
-    // Correct result matrix
-    MatrixXi correct(n,n);
-    correct = A * B;
-
     // Initialize the result matrix
     MatrixXi C(n, n);
     C.setZero();
@@ -108,20 +155,26 @@ int main(int argc, char *argv[]) {
     C = strassMult(A, B, n);
 
     // Print the result matrix
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            if (i == j) {
-                std::cout << C(i, j) << std::endl;
+    if (mode == 0) {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (i == j) {
+                    std::cout << C(i, j) << std::endl;
+                }
             }
         }
-    }
-    std::cout << std::endl;
-    
+        std::cout << std::endl;    
+    } 
+
     // Confirm that result is correct
-    if (C.isApprox(correct)) {
-        std::cout << "Correct!" << std::endl;
-    } else {
-        std::cout << "Incorrect!" << std::endl;
+    if (mode == 1) {
+        MatrixXi correct(n, n);
+        correct = A * B;
+        if (C.isApprox(correct)) {
+            std::cout << "Correct!" << std::endl;
+        } else {
+            std::cout << "Incorrect!" << std::endl;
+        }
     }
 
     return 0;
