@@ -114,16 +114,16 @@ MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
 int main(int argc, char *argv[]) {
     // Usage: ./strassen <mode> <matrix size> inputfile 
     // mode = 0: autograder
+    // mode = 1: debugger
     int mode = atoi(argv[1]);
-    // read in the matrix size (n)
+    // Read in the matrix size (n)
     int n = atoi(argv[2]);
 
-    // create a matrix of size n x n
+    // Create a matrix of size n x n
     MatrixXi A(n,n);
     MatrixXi B(n,n);
 
-    // read in input from input ASCII file (2n^2 entries, one number per line)
-    // first n^2 entries are for A, last n^2 entries are for B
+    // Read in the input file
     std::ifstream inputFile(argv[3]);
 
     if (!inputFile.is_open()) {
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Fill A, converting ASCII to integer
+    // Fill A
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             inputFile >> A(i, j);
