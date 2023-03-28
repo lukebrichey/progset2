@@ -9,5 +9,8 @@ strassen: strassen.cpp
 testfiles: testmaker.cpp
 	g++ -o testmaker testmaker.cpp -std=c++17  
 
+debug:
+	$(CC) $(CFLAGS) -g -o strassen strassen.cpp $(LIBS)
+	
 clean:
 	rm -f strassen testmaker
