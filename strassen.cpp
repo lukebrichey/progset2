@@ -37,9 +37,46 @@ void *threadedStrassMult(void *args) {
     return NULL;
 }
 
+MatrixXi padMatrix(const MatrixXi &M) {
+    int rows = M.rows();
+    int cols = M.cols();
+    int padded_rows = 1;
+    int padded_cols = 1;
+
+    while (padded_rows < rows) {
+        padded_rows *= 2;
+    }
+
+    while (padded_cols < cols) {
+        padded_cols *= 2;
+    }
+
+    MatrixXi padded(padded_rows, padded_cols);
+    padded.setZero();
+    padded.topLeftCorner(rows, cols) = M;
+    return padded;
+}
+
+MatrixXi unpadMatrix(const MatrixXi &M) {
+    return M.topLeftCorner(M.rows() - 1, M.cols() - 1);
+}
+
+
 MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
-    if (n <= 64) { // Base case: use standard matrix multiplication for small matrices
+    if (n <= 64 || (n != (n & -n))) { // Base case: use standard matrix multiplication for small matrices or non-power of 2 sizes
         return regMult(A, B, n);
+    }
+    
+    bool pad_required = false;
+    if (n % 2 != 0) {
+        n += 1;
+        pad_required = true;
+    }
+
+    MatrixXi padded_A = A, padded_B = B;
+    if (pad_required) {
+        padded_A = padMatrix(A);
+        padded_B = padMatrix(B);
     }
 
     int half = n / 2;
@@ -105,6 +142,10 @@ MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
 
     C << C11, C12,
          C21, C22;
+
+    if (pad_required) {
+        return unpadMatrix(C);
+    }
 
     return C;
 }
