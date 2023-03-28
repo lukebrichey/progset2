@@ -1,10 +1,9 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <Eigen/Dense>
 #include <pthread.h>
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <chrono>
 
 using namespace Eigen;
 
@@ -115,6 +114,12 @@ int main(int argc, char *argv[]) {
     // Usage: ./strassen <mode> <matrix size> inputfile 
     // mode = 0: autograder
     // mode = 1: debugger
+
+    if (argc != 4) {
+        std::cerr << "Usage: ./strassen <mode> <matrix size> inputfile" << std::endl;
+        return 1;
+    }
+
     int mode = atoi(argv[1]);
     // Read in the matrix size (n)
     int n = atoi(argv[2]);
@@ -151,30 +156,48 @@ int main(int argc, char *argv[]) {
     MatrixXi C(n, n);
     C.setZero();
 
-    // Multiply A and B using Strassen's algorithm
-    C = strassMult(A, B, n);
+    switch (mode) {
+        case 0:
+        {
+            // Run the algorithm
+            C = strassMult(A, B, n);
 
-    // Print the result matrix
-    if (mode == 0) {
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (i == j) {
-                    std::cout << C(i, j) << std::endl;
+            // Print the diagonal elements
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    if (i == j) {
+                        std::cout << C(i, j) << std::endl;
+                    }
                 }
             }
+            std::cout << std::endl;    
+            break;
         }
-        std::cout << std::endl;    
-    } 
+        case 1:
+        {
+            auto start = std::chrono::high_resolution_clock::now();
 
-    // Confirm that result is correct
-    if (mode == 1) {
-        MatrixXi correct(n, n);
-        correct = A * B;
-        if (C.isApprox(correct)) {
-            std::cout << "Correct!" << std::endl;
-        } else {
-            std::cout << "Incorrect!" << std::endl;
+            // Run the algorithm
+            C = strassMult(A, B, n);
+
+            auto end = std::chrono::high_resolution_clock::now();
+
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+            std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl;
+            
+            // Check the result        
+            MatrixXi correct(n, n);
+            correct = A * B;
+            if (C.isApprox(correct)) {
+                std::cout << "Correct!" << std::endl;
+            } else {
+                std::cout << "Incorrect!" << std::endl;
+            }
+            break;
         }
+        default:
+            std::cerr << "Invalid mode." << std::endl;
+            return 1;
     }
 
     return 0;
