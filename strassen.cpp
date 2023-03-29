@@ -4,6 +4,7 @@
 #include <fstream>
 #include <memory>
 #include <chrono>
+#include <random>
 
 using namespace Eigen;
 
@@ -150,11 +151,34 @@ MatrixXi strassMult(const MatrixXi &A, const MatrixXi &B, int n) {
     return C;
 }
 
+MatrixXi generate_random_graph(double p) {
+    MatrixXi adjacency_matrix(1024, 1024);
+    adjacency_matrix.setZero();
+
+    // Use a random number generator with a seed based on the current time.
+    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::default_random_engine generator(seed);
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+
+    for (int i = 0; i < 1024; i++) {
+        for (int j = 0; j < i; j++) {
+            double rand_val = distribution(generator);
+            if (rand_val < p) {
+                adjacency_matrix(i, j) = 1;
+                adjacency_matrix(j, i) = 1;
+            }
+        }
+    }
+
+    return adjacency_matrix;
+
+}
 
 int main(int argc, char *argv[]) {
     // Usage: ./strassen <mode> <matrix size> inputfile 
     // mode = 0: autograder
     // mode = 1: debugger
+    // mode = 2: triangles
 
     if (argc != 4) {
         std::cerr << "Usage: ./strassen <mode> <matrix size> inputfile" << std::endl;
@@ -234,6 +258,41 @@ int main(int argc, char *argv[]) {
             } else {
                 std::cout << "Incorrect!" << std::endl;
             }
+            break;
+        }
+        case 2:
+        {
+            std::vector<double> probabilities = {0.01, 0.02, 0.03, 0.04, 0.05};
+
+            for (const double p : probabilities) {
+                double avg = 0;
+                for (int i = 0; i < 10; i++) {
+                    std::cout << "Generating graph for p = " << p << std::endl;
+                    MatrixXi graph = generate_random_graph(p);
+                    MatrixXi A2 = strassMult(graph, graph, 1024);
+                    MatrixXi A3 = strassMult(A2, graph, 1024);
+
+                    // Calculate the number of triangles in the graph
+                    double num_triangles = 0;
+                    int diag_sum = 0;
+                    // Add diagonal entries
+                    for (int i = 0; i < 1024; i++) {
+                        for (int j = 0; j < 1024; j++) {
+                            if (i == j) {
+                                diag_sum += A3(i, j);
+                            }
+                        }
+                    }
+
+                    std::cout << "Diagonal sum: " << diag_sum << std::endl;
+
+                    num_triangles = diag_sum / 6;
+                    avg += num_triangles;
+                }
+                avg /= 10;
+                std::cout << "There are " << avg << "in the graph with p = " << p << std::endl;
+            }
+
             break;
         }
         default:
